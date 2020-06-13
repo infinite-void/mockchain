@@ -1,4 +1,4 @@
-const cryptoHash = require('../utils/crypto-hash');
+const { cryptoHash } = require('../utils');
 const hexToBinary = require('hex-to-binary');
 const { GENESIS_DATA, MINE_RATE } = require('../config');
 
