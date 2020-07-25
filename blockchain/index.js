@@ -1,5 +1,8 @@
 const Block = require('./block');
 const { cryptoHash } = require('../utils');
+const { REWARD_INPUT, MINING_REWARD } = require('../config');
+const Transaction = require('../wallet/transaction');
+const Wallet = require('../wallet');
 
 class Blockchain {
     
@@ -16,7 +19,7 @@ class Blockchain {
         this.chain.push(newBlock);
     }
 
-    replaceChain(chain) {
+    replaceChain(chain, validateTransactionData, onSuccess) {
         if(chain.length <= this.chain.length) {
             console.error('Incoming chain is expected to be longer then the original chain');
             return;
@@ -27,8 +30,59 @@ class Blockchain {
             return;
         }
         
+        if(validateTransactionData && !this.validTransactionData({ chain: chain })) {
+            console.error('Incoming chain contains invalid transactionData');
+            return;
+        }
+        
+        if(onSuccess)
+            onSuccess();
+        
         console.log('replacing chain with ', chain, '...');
         this.chain = chain;
+    }
+
+    validTransactionData({ chain }) {
+        for(let i = 1; i < chain.length; i++) {
+            const block = chain[i];
+            const transactionSet = new Set();
+            let rewardTransactionCount = 0;
+
+            for(let transaction of block.data) {
+                if(transaction.input.address === REWARD_INPUT.address) {
+                    rewardTransactionCount += 1;
+                    if(rewardTransactionCount > 1) {
+                        console.error('contains multiple reward for the same block ');
+                        return false;
+                    }
+                    if(Object.values(transaction.outputMap)[0] !== MINING_REWARD) {
+                        console.error('value of MINING_REWARD is invalid in transaction ' + transaction.id);
+                        return false;  
+                    }
+                }
+                else {
+                    if(!Transaction.validTransaction(transaction)) {
+                        console.error('invalid outputMap in transaction ' + transaction.id);
+                        return false;
+                    }
+                    const trueBalance = Wallet.calculateBalance({
+                        chain: this.chain,
+                        address: transaction.input.address
+                    });
+                    if(transaction.input.amount !== trueBalance) {
+                        console.error('conflicting balance amount for wallet address ' + transaction.id);
+                        return false;
+                    }
+                    if(transactionSet.has(transaction)) {
+                        console.error('Block contains multiple instances of transaction ' + transaction.id);
+                        return false;
+                    }
+                    else   
+                        transactionSet.add(transaction);
+                }
+            }
+        }
+        return true;     
     }
 
     static isValidChain(chain) {
