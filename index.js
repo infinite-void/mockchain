@@ -7,6 +7,7 @@ const PubSub = require('./app/pubsub');
 const TransactionPool = require('./wallet/transaction-pool')
 const Wallet = require('./wallet');
 const TransactionMiner = require('./app/transaction-miner');
+const Transaction = require('./wallet/transaction');
 
 const app = express();
 const blockchain = new Blockchain();
@@ -19,7 +20,7 @@ const DEFAULT_PORT = 3000;
 const ROOT_NONE_ADDRESS = `http://localhost:${DEFAULT_PORT}`; 
 
 app.use(bodyParser.json()); 
-app.use(express.static());
+app.use(express.static(path.join(__dirname, 'client/dist')));
 
 app.get('/api/blocks', (req, res) => {
     res.json(blockchain.chain);
@@ -73,11 +74,11 @@ app.get('/api/wallet-info', (req, res) => {
 });
 
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, './client/index.html'));
+    res.sendFile(path.join(__dirname, 'client/dist/index.html'));
 });
 const syncWithRootState = () => {
     request({ url: `${ROOT_NONE_ADDRESS}/api/blocks` }, (error, response, body) => {
-        if(!error && response.statusCode === 200) {
+        if(!error && response.statusCode === 200){
             const rootChain = JSON.parse(body);
 
             console.log('replace chain on a sync with', rootChain);
@@ -94,6 +95,44 @@ const syncWithRootState = () => {
         }
     });
 };
+
+const walletFoo = new Wallet();
+const walletBar = new Wallet();
+
+const generateTransaction = ({ wallet, recipient, amount }) => {
+    const transaction = wallet.createTransaction({
+        recipient, amount, chain: blockchain.chain
+    });
+    transactionPool.setTransaction(transaction);
+}
+
+const walletAction = () => generateTransaction({
+    wallet, recipient: walletFoo.publicKey, amount: 10
+});
+
+const walletFooAction = () => generateTransaction({
+    wallet: walletFoo, recipient: walletBar.publicKey, amount: 20
+});
+
+const walletBarAction = () => generateTransaction({
+    wallet: walletBar, recipient: wallet.publicKey, amount: 30
+});
+
+for(let i = 0; i < 10; i++) {
+    if(i % 3 === 0) {
+        walletAction();
+        walletFooAction();
+    }
+    else if(i % 3 === 1) {
+        walletFooAction();
+        walletBarAction();
+    }
+    else {
+        walletBarAction();
+        walletAction();
+    }
+    transactionMiner.mineTransactions();
+}
 
 let PEER_PORT;
 
